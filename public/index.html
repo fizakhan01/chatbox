@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en" data-mood="dusk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lantern Chat</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,800&family=Manrope:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="http://localhost:8080/socket.io/socket.io.js"></script>
+<style>
+:root{--bg:#120f24;--a:#ffb86b;--b:#ff6b8b;--c:#7c5cff;--ink:#f4ecff;--mut:#a79fc4;--glass:rgba(255,255,255,.07);--line:rgba(255,255,255,.12);--r:22px}
+[data-mood=tide]{--bg:#071a24;--a:#5ef0d2;--b:#38a3ff;--c:#2b5cff}
+[data-mood=moss]{--bg:#0c1a12;--a:#d7ff6b;--b:#3ddc97;--c:#1f9d6b}
+[data-mood=plum]{--bg:#1a0d22;--a:#ff9be0;--b:#c06bff;--c:#6b4bff}
+*{box-sizing:border-box;margin:0}
+html,body{height:100%}
+body{font:500 15px/1.5 Manrope,system-ui,sans-serif;color:var(--ink);background:var(--bg);overflow:hidden;transition:background .8s}
+button,input{font:inherit;color:inherit}
+button{cursor:pointer;border:0;background:none}
+:focus-visible{outline:2px solid var(--a);outline-offset:2px}
+
+/* living background */
+.orbs{position:fixed;inset:0;z-index:0;overflow:hidden}
+.orb{position:absolute;border-radius:50%;filter:blur(70px);opacity:.55;transition:background 1s,transform .9s cubic-bezier(.2,.9,.3,1.4),opacity .9s;animation:drift 18s ease-in-out infinite alternate}
+.orb:nth-child(1){width:46vmax;height:46vmax;left:-12vmax;top:-14vmax;background:var(--a)}
+.orb:nth-child(2){width:40vmax;height:40vmax;right:-10vmax;bottom:-12vmax;background:var(--b);animation-delay:-6s}
+.orb:nth-child(3){width:30vmax;height:30vmax;left:40%;top:35%;background:var(--c);opacity:.4;animation-delay:-11s}
+.orbs.pulse .orb{transform:scale(1.14);opacity:.75}
+@keyframes drift{to{translate:6vmax 4vmax}}
+.grain{position:fixed;inset:0;z-index:1;pointer-events:none;opacity:.07;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='.9'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E")}
+
+/* join screen */
+.join{position:fixed;inset:0;z-index:10;display:flex;overflow-y:auto;padding:20px;transition:opacity .5s,visibility .5s}
+.join.gone{opacity:0;visibility:hidden}
+.card{margin:auto;width:min(440px,100%);padding:34px;border-radius:32px;background:var(--glass);border:1px solid var(--line);backdrop-filter:blur(24px);box-shadow:0 30px 80px rgba(0,0,0,.45)}
+.lamp{width:62px;height:62px;border-radius:50% 50% 46% 46%;background:radial-gradient(circle at 50% 60%,#fff6dc,var(--a) 55%,var(--b));box-shadow:0 0 50px var(--a),0 0 120px var(--b);margin-bottom:22px;animation:flicker 3.2s infinite}
+@keyframes flicker{0%,100%{filter:brightness(1)}45%{filter:brightness(1.25)}50%{filter:brightness(.9)}60%{filter:brightness(1.15)}}
+h1{font:800 clamp(34px,7vw,46px)/1.02 Fraunces,serif;letter-spacing:-.02em}
+.card p{color:var(--mut);margin:10px 0 22px}
+.lbl{display:block;color:var(--mut);font-size:13px;margin:16px 0 8px}
+.field{width:100%;padding:14px 16px;border-radius:16px;border:1px solid var(--line);background:rgba(0,0,0,.25);outline:0}
+.field:focus{border-color:var(--a);box-shadow:0 0 0 4px color-mix(in srgb,var(--a) 22%,transparent)}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.pick{width:46px;height:46px;border-radius:15px;font-size:22px;background:var(--glass);border:1px solid var(--line);transition:transform .2s}
+.pick:hover{transform:translateY(-3px) rotate(-4deg)}
+.pick[aria-pressed=true]{background:var(--a);border-color:transparent;box-shadow:0 8px 24px color-mix(in srgb,var(--a) 50%,transparent)}
+.mood{padding:9px 16px;border-radius:99px;background:var(--glass);border:1px solid var(--line);display:flex;gap:8px;align-items:center}
+.mood i{width:12px;height:12px;border-radius:50%;background:linear-gradient(135deg,var(--x),var(--y))}
+.mood[aria-pressed=true]{border-color:var(--a);background:color-mix(in srgb,var(--a) 16%,transparent)}
+.go{width:100%;margin-top:26px;padding:15px;border-radius:18px;font-weight:700;color:#1a1020;background:linear-gradient(120deg,var(--a),var(--b));box-shadow:0 12px 34px color-mix(in srgb,var(--b) 45%,transparent);transition:transform .2s,filter .2s}
+.go:hover{transform:translateY(-2px);filter:brightness(1.08)}
+
+/* app shell */
+.app{position:relative;z-index:2;height:100%;display:grid;grid-template-columns:260px 1fr;gap:16px;padding:16px;max-width:1200px;margin:auto}
+.panel{border-radius:var(--r);background:var(--glass);border:1px solid var(--line);backdrop-filter:blur(22px)}
+.side{padding:20px 14px;display:flex;flex-direction:column;gap:6px;overflow:auto}
+.brand{display:flex;align-items:center;gap:10px;padding:0 8px 14px;font:800 22px Fraunces,serif}
+.brand b{width:22px;height:22px;border-radius:50%;background:radial-gradient(circle,#fff6dc,var(--a));box-shadow:0 0 18px var(--a)}
+.side h3{font-size:13px;color:var(--mut);padding:8px;font-weight:500}
+.u{display:flex;align-items:center;gap:10px;padding:8px;border-radius:14px;animation:pop .4s cubic-bezier(.2,.9,.3,1.4)}
+.u:hover{background:var(--glass)}
+.av{width:38px;height:38px;border-radius:14px;display:grid;place-items:center;font-size:20px;flex:none;position:relative}
+.u .av::after{content:"";position:absolute;right:-3px;bottom:-3px;width:11px;height:11px;border-radius:50%;background:#46e6a0;border:2px solid var(--bg)}
+.u small{color:var(--mut)}
+.moods{margin-top:auto;padding:12px 8px 0;border-top:1px solid var(--line)}
+.moods .row{gap:10px;margin-top:6px}
+.dot{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,var(--x),var(--y));border:2px solid transparent;transition:transform .25s}
+.dot:hover{transform:scale(1.15)}
+.dot[aria-pressed=true]{border-color:#fff;box-shadow:0 0 0 3px color-mix(in srgb,var(--x) 40%,transparent)}
+[data-m=dusk]{--x:#ffb86b;--y:#ff6b8b}[data-m=tide]{--x:#5ef0d2;--y:#38a3ff}[data-m=moss]{--x:#d7ff6b;--y:#3ddc97}[data-m=plum]{--x:#ff9be0;--y:#c06bff}
+
+.main{display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.head{display:flex;align-items:center;gap:12px;padding:16px 22px;border-bottom:1px solid var(--line)}
+.head h2{font:800 22px Fraunces,serif;flex:1}
+.head span{color:var(--mut);font-size:13px}
+.menu{display:none;width:40px;height:40px;border-radius:12px;background:var(--glass);font-size:18px}
+.ribbon{margin:12px 22px 0;padding:9px 14px;border-radius:14px;font-size:13px;color:#1a1020;background:linear-gradient(110deg,var(--a),var(--b));animation:pop .5s cubic-bezier(.2,.9,.3,1.4)}
+.feed{flex:1;overflow:auto;padding:20px 22px;display:flex;flex-direction:column;gap:4px;scroll-behavior:smooth}
+.empty{margin:auto;text-align:center;color:var(--mut);max-width:30ch}
+.empty .lamp{margin:0 auto 18px;width:46px;height:46px}
+.sys{align-self:center;font-size:12.5px;color:var(--mut);padding:5px 14px;margin:8px 0;border-radius:99px;background:var(--glass);animation:pop .4s}
+.m{display:flex;gap:10px;max-width:min(78%,560px);animation:pop .35s cubic-bezier(.2,.9,.3,1.3)}
+.m.me{align-self:flex-end;flex-direction:row-reverse}
+.m.cont{margin-top:-1px}.m.cont .av{visibility:hidden}.m.cont .who{display:none}
+.who{font-size:12.5px;color:var(--mut);margin:0 6px 3px}
+.m.me .who{text-align:right}
+.bub{position:relative;padding:10px 15px;border-radius:20px 20px 20px 6px;background:rgba(255,255,255,.1);border:1px solid var(--line);overflow-wrap:anywhere;white-space:pre-wrap}
+.m.me .bub{border-radius:20px 20px 6px 20px;border:0;color:#1a1020;font-weight:600;background:linear-gradient(135deg,var(--a),var(--b));box-shadow:0 10px 28px color-mix(in srgb,var(--b) 30%,transparent)}
+.bub time{display:block;font-size:11px;opacity:.6;margin-top:2px;text-align:right}
+.big{font-size:42px;line-height:1.1;background:none!important;border:0!important;box-shadow:none!important;padding:2px 6px}
+.react{position:absolute;top:-18px;display:flex;gap:2px;padding:4px 6px;border-radius:99px;background:#241c3a;border:1px solid var(--line);opacity:0;pointer-events:none;transform:translateY(6px) scale(.9);transition:.18s;z-index:3}
+.m:not(.me) .react{left:8px}.m.me .react{right:8px}
+.m:hover .react,.m:focus-within .react{opacity:1;pointer-events:auto;transform:none}
+.react button{font-size:17px;padding:2px 4px;border-radius:8px;transition:transform .15s}
+.react button:hover{transform:scale(1.35)}
+.chips{display:flex;gap:5px;flex-wrap:wrap;margin-top:5px}
+.chip{font-size:13px;padding:1px 9px;border-radius:99px;background:rgba(0,0,0,.35);border:1px solid var(--line);color:var(--ink);animation:pop .3s cubic-bezier(.2,.9,.3,1.6)}
+.typing{height:26px;padding:0 24px;font-size:13px;color:var(--mut);display:flex;align-items:center;gap:8px}
+.typing i{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--a);animation:bounce 1s infinite}
+.typing i:nth-child(2){animation-delay:.15s}.typing i:nth-child(3){animation-delay:.3s}
+@keyframes bounce{50%{transform:translateY(-5px)}}
+@keyframes pop{from{opacity:0;transform:translateY(10px) scale(.96)}}
+
+.composer{position:relative;display:flex;gap:10px;padding:0 18px 18px}
+.composer .field{border-radius:99px;padding:15px 22px;background:rgba(0,0,0,.28)}
+.round{width:52px;height:52px;border-radius:50%;flex:none;display:grid;place-items:center;font-size:21px;background:var(--glass);border:1px solid var(--line);transition:transform .2s}
+.round:hover{transform:rotate(-8deg) scale(1.06)}
+.send{background:linear-gradient(135deg,var(--a),var(--b));border:0;color:#1a1020;box-shadow:0 10px 26px color-mix(in srgb,var(--b) 45%,transparent)}
+.send:active{transform:scale(.9) rotate(14deg)}
+.tray{position:absolute;bottom:72px;left:18px;display:none;gap:4px;flex-wrap:wrap;width:276px;padding:10px;border-radius:20px;background:#241c3a;border:1px solid var(--line);box-shadow:0 20px 50px rgba(0,0,0,.5);z-index:5}
+.tray.open{display:flex;animation:pop .25s}
+.tray button{font-size:22px;width:40px;height:40px;border-radius:12px}
+.tray button:hover{background:var(--glass)}
+.hint{padding:0 26px 14px;color:var(--mut);font-size:12.5px;margin-top:-6px}
+.hint code{color:var(--a)}
+.bit{position:fixed;z-index:50;pointer-events:none;font-size:22px}
+
+@media(max-width:780px){
+ .app{grid-template-columns:1fr;padding:0}
+ .panel{border-radius:0;border-width:0}
+ .side{position:fixed;inset:0 20% 0 0;z-index:20;background:var(--bg);transform:translateX(-102%);transition:transform .35s cubic-bezier(.2,.9,.3,1)}
+ .side.open{transform:none}
+ .menu{display:block}
+ .m{max-width:90%}
+}
+@media(max-height:720px){.card{padding:22px}.card .lamp{width:40px;height:40px;margin-bottom:12px}.card p{margin:6px 0 10px}.lbl{margin:10px 0 6px}.pick{width:40px;height:40px;font-size:19px}.go{margin-top:16px}h1{font-size:30px}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="orbs" id="orbs"><div class="orb"></div><div class="orb"></div><div class="orb"></div></div>
+<div class="grain"></div>
+
+<section class="join" id="join">
+  <form class="card" id="joinForm">
+    <div class="lamp"></div>
+    <h1>Light a lamp, start talking.</h1>
+    <p>Pick a name and a face. Everyone in the room sees you instantly.</p>
+    <label class="lbl" for="name">Your name</label>
+    <input class="field" id="name" maxlength="20" placeholder="e.g. Fiza" autocomplete="off" required>
+    <span class="lbl">Your face</span>
+    <div class="row" id="faces"></div>
+    <span class="lbl">Room mood</span>
+    <div class="row" id="moodPick"></div>
+    <button class="go" type="submit">Enter the room</button>
+  </form>
+</section>
+
+<main class="app">
+  <aside class="panel side" id="side">
+    <div class="brand"><b></b>Lantern</div>
+    <h3 id="onlineLbl">Online</h3>
+    <div id="users"></div>
+    <div class="moods"><span class="lbl" style="margin:0">Room mood</span><div class="row" id="dots"></div></div>
+  </aside>
+  <section class="panel main">
+    <header class="head">
+      <button class="menu" id="menu" aria-label="Show people">☰</button>
+      <h2>The Common Room</h2><span id="status">Connecting…</span>
+    </header>
+    <div id="ribbonHost"></div>
+    <div class="feed" id="feed" aria-live="polite">
+      <div class="empty" id="empty"><div class="lamp"></div>It's quiet in here. Say something and the room lights up.</div>
+    </div>
+    <div class="typing" id="typing"></div>
+    <form class="composer" id="composer">
+      <div class="tray" id="tray"></div>
+      <button class="round" type="button" id="emojiBtn" aria-label="Emoji">😊</button>
+      <input class="field" id="msg" maxlength="1000" placeholder="Write a message…" autocomplete="off">
+      <button class="round send" type="submit" aria-label="Send">➤</button>
+    </form>
+    <div class="hint">Try <code>/confetti</code>, <code>/shrug</code> or send just an emoji. Hover a message to react.</div>
+  </section>
+</main>
+
+<script>
+const $=s=>document.querySelector(s);
+const FACES=["🦊","🐼","🦉","🐙","🌵","🍉","👾","🪐"], COLORS=["#ffb86b","#ff6b8b","#5ef0d2","#d7ff6b","#c06bff","#38a3ff","#ff9be0","#3ddc97"];
+const MOODS=["dusk","tide","moss","plum"], REACTS=["❤️","😂","🔥","👏","😮"];
+const EMOJI="😀😂🥹😍😎🤔😴🥳🙌👍🔥✨💜🎉🍕☕🎧🚀🌙💡🤝😅🫶🙏".match(/\p{Extended_Pictographic}\uFE0F?/gu);
+let me={name:"",avatar:FACES[0],color:COLORS[0]}, mood="dusk", last=null, typers={};
+
+/* join screen */
+const faces=$("#faces"), moodPick=$("#moodPick");
+FACES.forEach((f,i)=>{const b=document.createElement("button");b.type="button";b.className="pick";b.textContent=f;b.setAttribute("aria-pressed",i==0);b.onclick=()=>{[...faces.children].forEach(x=>x.setAttribute("aria-pressed",x===b));me.avatar=f;me.color=COLORS[i]};faces.append(b)});
+MOODS.forEach(m=>{const b=document.createElement("button");b.type="button";b.className="mood";b.dataset.m=m;b.setAttribute("aria-pressed",m==="dusk");b.innerHTML=`<i></i>${m}`;b.onclick=()=>setMood(m);moodPick.append(b)});
+MOODS.forEach(m=>{const b=document.createElement("button");b.className="dot";b.dataset.m=m;b.title=m;b.setAttribute("aria-label",m+" mood");b.onclick=()=>setMood(m);$("#dots").append(b)});
+function setMood(m){mood=m;document.documentElement.dataset.mood=m;document.querySelectorAll("[data-m]").forEach(x=>x.setAttribute("aria-pressed",x.dataset.m===m));localStorage.setItem("lantern-mood",m)}
+setMood(localStorage.getItem("lantern-mood")||"dusk");
+$("#name").value=localStorage.getItem("lantern-name")||"";
+
+$("#joinForm").onsubmit=e=>{e.preventDefault();me.name=$("#name").value.trim();if(!me.name)return;localStorage.setItem("lantern-name",me.name);
+  try{socket.emit("setUser",me)}catch(err){console.error(err)}
+  $("#join").classList.add("gone");$("#msg").focus()};
+if(typeof io==="undefined"){$("#status").textContent="Server not reachable - run: node server.js";console.error("socket.io client not loaded. Is node server.js running on port 8080?")}
+
+/* socket (same origin as your Express server) */
+// works when opened via localhost:8080 AND via VS Code Live Server / file
+const SERVER=location.port==="8080"?undefined:"http://localhost:8080";
+const socket=typeof io==="undefined"?{on(){},emit(){}}:io(SERVER,{transports:["websocket"]});
+socket.on("connect",()=>{$("#status").textContent="Connected";if(me.name)socket.emit("setUser",me)});
+socket.on("disconnect",()=>$("#status").textContent="Reconnecting…");
+socket.on("click",t=>{console.log(t);$("#status").textContent="Connected"});   // original event
+socket.on("join",t=>console.log(t));                                            // original event
+socket.on("announcement",t=>{const r=document.createElement("div");r.className="ribbon";r.textContent="📢 "+t;$("#ribbonHost").replaceChildren(r)}); // original event
+socket.emit("fr","Hello from Client side");                                     // original event
+
+
+
+/* people */
+socket.on("users",list=>{
+  $("#onlineLbl").textContent=`Online (${list.length})`;
+  $("#users").replaceChildren(...list.map(u=>{const d=document.createElement("div");d.className="u";d.innerHTML=`<div class="av" style="background:${u.color}33">${u.avatar}</div><div><b></b><br><small>${u.id===socket.id?"you":"here now"}</small></div>`;d.querySelector("b").textContent=u.name;return d}));
+});
+socket.on("user:joined",u=>sys(`${u.avatar} ${u.name} lit a lamp and joined`));
+socket.on("user:left",u=>sys(`${u.name} blew out their lamp`));
+function sys(t){hideEmpty();const d=document.createElement("div");d.className="sys";d.textContent=t;feed(d);last=null}
+
+/* messages */
+const feedEl=$("#feed");
+function feed(n){feedEl.append(n);feedEl.scrollTop=feedEl.scrollHeight}
+function hideEmpty(){const e=$("#empty");if(e)e.remove()}
+function pulse(){const o=$("#orbs");o.classList.add("pulse");setTimeout(()=>o.classList.remove("pulse"),700)}
+socket.on("message",m=>{
+  hideEmpty();pulse();
+  const mine=m.user.id===socket.id, cont=last===m.user.id;last=m.user.id;
+  const w=document.createElement("div");w.className=`m${mine?" me":""}${cont?" cont":""}`;w.dataset.id=m.id;
+  const isEmoji=/^(\p{Extended_Pictographic}\uFE0F?\s?){1,3}$/u.test(m.text);
+  w.innerHTML=`<div class="av" style="background:${m.user.color}33">${m.user.avatar}</div><div><div class="who"></div><div class="bub${isEmoji?" big":""}"><div class="react"></div><span class="t"></span><time></time><div class="chips"></div></div></div>`;
+  w.querySelector(".who").textContent=mine?"You":m.user.name;
+  w.querySelector(".t").textContent=m.text;
+  w.querySelector("time").textContent=new Date(m.ts).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
+  REACTS.forEach(r=>{const b=document.createElement("button");b.type="button";b.textContent=r;b.setAttribute("aria-label","React "+r);b.onclick=()=>socket.emit("react",{id:m.id,emoji:r});w.querySelector(".react").append(b)});
+  feed(w);
+  if(m.text.startsWith("🎉")&&m.text.includes("confetti"))burst();
+});
+socket.on("reaction",({id,emoji,by})=>{
+  const c=document.querySelector(`.m[data-id="${id}"] .chips`);if(!c)return;
+  let chip=[...c.children].find(x=>x.dataset.e===emoji);
+  if(!chip){chip=document.createElement("span");chip.className="chip";chip.dataset.e=emoji;chip.dataset.n=0;chip.dataset.by="";c.append(chip)}
+  chip.dataset.n=+chip.dataset.n+1;chip.dataset.by+=by+", ";chip.title=chip.dataset.by.slice(0,-2);chip.textContent=`${emoji} ${chip.dataset.n}`;
+  feedEl.scrollTop=feedEl.scrollHeight;
+});
+
+/* typing */
+let tt=0;
+$("#msg").addEventListener("input",()=>{const n=Date.now();if(n-tt>1200){tt=n;socket.emit("typing")}});
+socket.on("typing",name=>{typers[name]=Date.now();drawTyping()});
+function drawTyping(){const now=Date.now();Object.keys(typers).forEach(k=>now-typers[k]>2200&&delete typers[k]);const k=Object.keys(typers);
+  $("#typing").innerHTML=k.length?`<i></i><i></i><i></i><span></span>`:"";if(k.length)$("#typing span").textContent=k.length>2?"Several people are typing…":k.join(" and ")+(k.length>1?" are":" is")+" typing…"}
+setInterval(drawTyping,800);
+
+/* composer + slash commands */
+$("#composer").onsubmit=e=>{e.preventDefault();let t=$("#msg").value.trim();if(!t)return;
+  if(t==="/shrug")t="¯\\_(ツ)_/¯";
+  else if(t==="/confetti")t="🎉 confetti time";
+  socket.emit("message",t);$("#msg").value="";$("#tray").classList.remove("open")};
+const tray=$("#tray");EMOJI.forEach(e=>{const b=document.createElement("button");b.type="button";b.textContent=e;b.onclick=()=>{const i=$("#msg");i.value+=e;i.focus()};tray.append(b)});
+$("#emojiBtn").onclick=()=>tray.classList.toggle("open");
+$("#menu").onclick=()=>$("#side").classList.toggle("open");
+document.addEventListener("keydown",e=>{if(e.key==="Escape"){tray.classList.remove("open");$("#side").classList.remove("open")}});
+
+/* confetti */
+function burst(){if(matchMedia("(prefers-reduced-motion:reduce)").matches)return;
+  const bits=["🎉","✨","💜","🟡","🔥","⭐"];
+  for(let i=0;i<34;i++){const s=document.createElement("span");s.className="bit";s.textContent=bits[i%bits.length];
+    s.style.left=(innerWidth/2)+"px";s.style.top=(innerHeight*.7)+"px";document.body.append(s);
+    const dx=(Math.random()-.5)*innerWidth*.9,dy=-(innerHeight*.3+Math.random()*innerHeight*.5);
+    s.animate([{transform:"translate(0,0) rotate(0)",opacity:1},{transform:`translate(${dx}px,${dy}px) rotate(${Math.random()*540}deg)`,opacity:1,offset:.55},{transform:`translate(${dx*1.1}px,${dy+innerHeight*.7}px) rotate(720deg)`,opacity:0}],{duration:1800+Math.random()*900,easing:"cubic-bezier(.2,.7,.3,1)"}).onfinish=()=>s.remove()}}
+</script>
+</body>
+</html>
